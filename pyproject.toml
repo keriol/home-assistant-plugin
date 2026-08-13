@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wilfred-home-assistant"
+version = "0.1.0.dev0"
+description = "Official Home Assistant plugin for Wilfred"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "wilfred-butler @ git+https://github.com/keriol/butler-wilfred.git@d512ae959c83d42c7ab02465f6cef931d076d0c2",
+    "httpx>=0.28,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "build>=1.2,<2",
+    "pytest>=9,<10",
+    "wheel>=0.45",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
