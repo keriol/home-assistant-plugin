@@ -17,6 +17,7 @@ dependencies = [
 dev = [
     "build>=1.2,<2",
     "pytest>=9,<10",
+    "pytest-cov>=7,<8",
     "wheel>=0.45",
 ]
 
