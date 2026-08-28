@@ -56,6 +56,14 @@ def test_factory_builds_configured_plugin(
     )
 
     assert plugin.name == "home-assistant"
+    assert [domain.identity for domain in plugin.domains] == ["home"]
+    assert [
+        capability.identity
+        for capability in plugin.capabilities
+    ] == [
+        "home.control",
+        "home.state",
+    ]
 
     assert registry.names() == [
         "home_assistant_call_action",
@@ -63,6 +71,11 @@ def test_factory_builds_configured_plugin(
     ]
 
     assert results[0].plugin_name == "home-assistant"
+    assert results[0].domain_names == ("home",)
+    assert results[0].capability_names == (
+        "home.control",
+        "home.state",
+    )
 
 
 def test_factory_requires_config_path() -> None:
