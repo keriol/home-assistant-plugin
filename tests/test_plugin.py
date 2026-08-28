@@ -3,6 +3,7 @@ import json
 import httpx
 
 from wilfred import (
+    CapabilityRegistry,
     ExecutionEngine,
     ExecutionRequest,
     ExecutionStatus,
@@ -56,17 +57,37 @@ def build():
         transport=httpx.MockTransport(handler),
     )
 
+    plugin = create_plugin(config, client=client)
     registry = ToolRegistry()
-    load_plugins(
-        registry,
-        [create_plugin(config, client=client)],
-    )
+    load_plugins(registry, [plugin])
 
-    return registry
+    return registry, plugin
+
+
+def test_plugin_declares_home_capabilities() -> None:
+    _registry, plugin = build()
+
+    semantic = CapabilityRegistry.from_plugins([plugin])
+
+    assert semantic.domain_names() == ["home"]
+    assert semantic.capability_names() == [
+        "home.control",
+        "home.state",
+    ]
+
+    assert semantic.describe_domains() == [
+        {
+            "name": "home",
+            "description": (
+                "Provider-neutral ownership of home state and control behavior."
+            ),
+            "owner_plugin": "home-assistant",
+        }
+    ]
 
 
 def test_plugin_registers_read_and_action_tools() -> None:
-    registry = build()
+    registry, _plugin = build()
 
     read = registry.get("home_assistant_get_state")
     action = registry.get("home_assistant_call_action")
@@ -78,7 +99,9 @@ def test_plugin_registers_read_and_action_tools() -> None:
 
 
 def test_read_executes_without_confirmation() -> None:
-    result = ExecutionEngine(build()).execute(
+    registry, _plugin = build()
+
+    result = ExecutionEngine(registry).execute(
         ExecutionRequest(
             tool_name="home_assistant_get_state",
             arguments={"target": "desk_light"},
@@ -90,7 +113,9 @@ def test_read_executes_without_confirmation() -> None:
 
 
 def test_action_requires_confirmation() -> None:
-    result = ExecutionEngine(build()).execute(
+    registry, _plugin = build()
+
+    result = ExecutionEngine(registry).execute(
         ExecutionRequest(
             tool_name="home_assistant_call_action",
             arguments={
@@ -104,7 +129,9 @@ def test_action_requires_confirmation() -> None:
 
 
 def test_confirmed_action_dispatches() -> None:
-    result = ExecutionEngine(build()).execute(
+    registry, _plugin = build()
+
+    result = ExecutionEngine(registry).execute(
         ExecutionRequest(
             tool_name="home_assistant_call_action",
             arguments={
