@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from wilfred import CapabilityDefinition, DomainDefinition
 from wilfred.models import ToolDefinition, ToolPermission
 from wilfred.plugins import PluginDefinition
 from wilfred.registry import ToolRegistry
@@ -12,6 +13,30 @@ from wilfred_home_assistant.client import HomeAssistantClient
 from wilfred_home_assistant.config import (
     HomeAssistantConfig,
     reject_target_override,
+)
+
+
+HOME_DOMAIN = DomainDefinition(
+    name="home",
+    description=(
+        "Provider-neutral ownership of home state and control behavior."
+    ),
+)
+
+HOME_STATE_CAPABILITY = CapabilityDefinition(
+    name="state",
+    domain=HOME_DOMAIN.identity,
+    description=(
+        "Read observable state through an authorized home integration."
+    ),
+)
+
+HOME_CONTROL_CAPABILITY = CapabilityDefinition(
+    name="control",
+    domain=HOME_DOMAIN.identity,
+    description=(
+        "Request authorized home actions while preserving execution policy."
+    ),
 )
 
 
@@ -122,4 +147,17 @@ def create_plugin(
             "Official Home Assistant integration for Wilfred."
         ),
         register=register,
+        domains=(HOME_DOMAIN,),
+        capabilities=(
+            HOME_CONTROL_CAPABILITY,
+            HOME_STATE_CAPABILITY,
+        ),
     )
+
+
+__all__ = [
+    "HOME_CONTROL_CAPABILITY",
+    "HOME_DOMAIN",
+    "HOME_STATE_CAPABILITY",
+    "create_plugin",
+]
