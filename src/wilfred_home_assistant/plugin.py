@@ -3,41 +3,68 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from wilfred import CapabilityDefinition, DomainDefinition
-from wilfred.models import ToolDefinition, ToolPermission
-from wilfred.plugins import PluginDefinition
-from wilfred.registry import ToolRegistry
+from butler_core import (
+    AvailabilityResult,
+    AvailabilityState,
+    CapabilityDefinition,
+    DomainDefinition,
+    PluginDefinition,
+    ToolDefinition,
+    ToolPermission,
+    ToolRegistry,
+)
 
 from wilfred_home_assistant import __version__
 from wilfred_home_assistant.client import HomeAssistantClient
-from wilfred_home_assistant.config import (
-    HomeAssistantConfig,
-    reject_target_override,
+from wilfred_home_assistant.config import HomeAssistantConfig, reject_target_override
+from wilfred_home_assistant.errors import (
+    HomeAssistantConnectionError,
+    HomeAssistantResponseError,
+    HomeAssistantUnauthorizedError,
 )
 
 
 HOME_DOMAIN = DomainDefinition(
     name="home",
-    description=(
-        "Provider-neutral ownership of home state and control behavior."
-    ),
+    description="Provider-neutral ownership of home state and control behavior.",
 )
 
 HOME_STATE_CAPABILITY = CapabilityDefinition(
     name="state",
     domain=HOME_DOMAIN.identity,
-    description=(
-        "Read observable state through an authorized home integration."
-    ),
+    description="Read observable state through an authorized home integration.",
 )
 
 HOME_CONTROL_CAPABILITY = CapabilityDefinition(
     name="control",
     domain=HOME_DOMAIN.identity,
-    description=(
-        "Request authorized home actions while preserving execution policy."
-    ),
+    description="Request authorized home actions while preserving execution policy.",
 )
+
+
+def _readiness_probe(client: HomeAssistantClient) -> AvailabilityResult:
+    try:
+        client.check_api()
+    except HomeAssistantUnauthorizedError:
+        return AvailabilityResult(
+            AvailabilityState.UNAVAILABLE,
+            reason_code="home_assistant_authentication_failed",
+            diagnostic="Home Assistant rejected the configured credential.",
+        )
+    except HomeAssistantConnectionError:
+        return AvailabilityResult(
+            AvailabilityState.UNAVAILABLE,
+            reason_code="home_assistant_unreachable",
+            diagnostic="Home Assistant endpoint is unreachable.",
+        )
+    except HomeAssistantResponseError:
+        return AvailabilityResult(
+            AvailabilityState.ERROR,
+            reason_code="home_assistant_invalid_response",
+            diagnostic="Home Assistant returned an invalid readiness response.",
+        )
+
+    return AvailabilityResult.usable_result("Home Assistant API is reachable.")
 
 
 def create_plugin(
@@ -45,27 +72,26 @@ def create_plugin(
     *,
     client: HomeAssistantClient | None = None,
 ) -> PluginDefinition:
-    """Create a configured first-party Home Assistant plugin."""
+    """Create a configured consumer-neutral Home Assistant plugin."""
 
     resolved_client = client or HomeAssistantClient(config)
-
     targets = sorted(config.targets)
     actions = sorted(config.actions)
+
+    def readiness() -> AvailabilityResult:
+        return _readiness_probe(resolved_client)
 
     def register(registry: ToolRegistry) -> None:
         def get_state(target: str) -> dict[str, Any]:
             entity_id = config.resolve_target(target)
-
-            return resolved_client.get_state(
-                entity_id
-            ).to_dict()
+            return resolved_client.get_state(entity_id).to_dict()
 
         registry.register(
             ToolDefinition(
                 name="home_assistant_get_state",
                 description=(
-                    "Read the current Home Assistant state and "
-                    "attributes of an authorized logical target."
+                    "Read the current Home Assistant state and attributes of an "
+                    "authorized logical target."
                 ),
                 handler=get_state,
                 permission=ToolPermission.READ,
@@ -73,10 +99,7 @@ def create_plugin(
                 parameters={
                     "type": "object",
                     "properties": {
-                        "target": {
-                            "type": "string",
-                            "enum": targets,
-                        },
+                        "target": {"type": "string", "enum": targets},
                     },
                     "required": ["target"],
                     "additionalProperties": False,
@@ -92,13 +115,10 @@ def create_plugin(
             action_definition = config.resolve_action(action)
             entity_id = config.resolve_target(target)
             overrides = dict(data or {})
-
             reject_target_override(overrides)
-
             payload = dict(action_definition.data)
             payload.update(overrides)
             payload["entity_id"] = entity_id
-
             return resolved_client.call_service(
                 action_definition.domain,
                 action_definition.service,
@@ -109,9 +129,9 @@ def create_plugin(
             ToolDefinition(
                 name="home_assistant_call_action",
                 description=(
-                    "Dispatch a configured Home Assistant action "
-                    "to an authorized logical target. Successful "
-                    "dispatch does not prove physical state change."
+                    "Dispatch a configured Home Assistant action to an authorized "
+                    "logical target. Successful dispatch does not prove physical "
+                    "state change."
                 ),
                 handler=call_action,
                 permission=ToolPermission.ACTION,
@@ -119,39 +139,39 @@ def create_plugin(
                 parameters={
                     "type": "object",
                     "properties": {
-                        "action": {
-                            "type": "string",
-                            "enum": actions,
-                        },
-                        "target": {
-                            "type": "string",
-                            "enum": targets,
-                        },
-                        "data": {
-                            "type": "object",
-                        },
+                        "action": {"type": "string", "enum": actions},
+                        "target": {"type": "string", "enum": targets},
+                        "data": {"type": "object"},
                     },
-                    "required": [
-                        "action",
-                        "target",
-                    ],
+                    "required": ["action", "target"],
                     "additionalProperties": False,
                 },
             )
         )
 
+    capabilities = (
+        CapabilityDefinition(
+            name=HOME_CONTROL_CAPABILITY.name,
+            domain=HOME_CONTROL_CAPABILITY.domain,
+            description=HOME_CONTROL_CAPABILITY.description,
+            availability_probe=readiness,
+        ),
+        CapabilityDefinition(
+            name=HOME_STATE_CAPABILITY.name,
+            domain=HOME_STATE_CAPABILITY.domain,
+            description=HOME_STATE_CAPABILITY.description,
+            availability_probe=readiness,
+        ),
+    )
+
     return PluginDefinition(
         name="home-assistant",
         version=__version__,
-        description=(
-            "Official Home Assistant integration for Wilfred."
-        ),
+        description="Reusable Home Assistant integration for Butler runtimes.",
         register=register,
         domains=(HOME_DOMAIN,),
-        capabilities=(
-            HOME_CONTROL_CAPABILITY,
-            HOME_STATE_CAPABILITY,
-        ),
+        capabilities=capabilities,
+        readiness_probe=readiness,
     )
 
 
