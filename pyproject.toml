@@ -11,6 +11,7 @@ requires-python = ">=3.12"
 dependencies = [
     "butler-core @ git+https://github.com/keriol/butler-core.git@827bbac1038b6591f88648e5b69e50ae66834c19",
     "httpx>=0.28,<1",
+    "websockets>=15,<17",
 ]
 
 [project.optional-dependencies]

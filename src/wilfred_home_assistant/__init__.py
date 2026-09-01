@@ -18,6 +18,11 @@ from wilfred_home_assistant.client import (
 from wilfred_home_assistant.config import (
     HomeAssistantAction,
     HomeAssistantConfig,
+    HomeAssistantConnectionConfig,
+)
+from wilfred_home_assistant.discovery import (
+    DiscoveredHomeAssistantEntity,
+    HomeAssistantDiscoveryClient,
 )
 from wilfred_home_assistant.errors import (
     HomeAssistantConfigurationError,
@@ -29,19 +34,34 @@ from wilfred_home_assistant.errors import (
     HomeAssistantUnavailableError,
 )
 from wilfred_home_assistant.plugin import create_plugin
+from wilfred_home_assistant.setup import (
+    HOME_ASSISTANT_SETUP,
+    SetupDefinition,
+    SetupFieldDefinition,
+    SetupFieldKind,
+    evaluate_environment_setup,
+)
 
 __all__ = [
+    "DiscoveredHomeAssistantEntity",
+    "HOME_ASSISTANT_SETUP",
     "HomeAssistantAction",
     "HomeAssistantClient",
     "HomeAssistantConfig",
     "HomeAssistantConfigurationError",
+    "HomeAssistantConnectionConfig",
     "HomeAssistantConnectionError",
+    "HomeAssistantDiscoveryClient",
     "HomeAssistantError",
     "HomeAssistantNotFoundError",
     "HomeAssistantResponseError",
     "HomeAssistantState",
     "HomeAssistantUnauthorizedError",
     "HomeAssistantUnavailableError",
+    "SetupDefinition",
+    "SetupFieldDefinition",
+    "SetupFieldKind",
     "create_plugin",
+    "evaluate_environment_setup",
     "__version__",
 ]
