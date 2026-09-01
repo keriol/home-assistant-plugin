@@ -2,15 +2,16 @@ import json
 
 import httpx
 
-from wilfred import (
-    CapabilityRegistry,
+from butler_core import (
+    AvailabilityState,
     ExecutionEngine,
     ExecutionRequest,
     ExecutionStatus,
     ToolPermission,
     ToolRegistry,
+    evaluate_availability_probe,
+    validate_plugin_definition,
 )
-from wilfred.plugins import load_plugins
 
 from wilfred_home_assistant import (
     HomeAssistantAction,
@@ -20,10 +21,13 @@ from wilfred_home_assistant import (
 )
 
 
-def build():
+def build(*, api_status: int = 200):
     state = {"value": "off"}
 
     def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/":
+            return httpx.Response(api_status, json={"message": "API running."})
+
         if request.method == "GET":
             return httpx.Response(
                 200,
@@ -37,7 +41,6 @@ def build():
         payload = json.loads(request.content)
         assert payload["entity_id"] == "light.demo_desk"
         state["value"] = "on"
-
         return httpx.Response(200, json=[])
 
     config = HomeAssistantConfig(
@@ -56,39 +59,25 @@ def build():
         config,
         transport=httpx.MockTransport(handler),
     )
-
     plugin = create_plugin(config, client=client)
     registry = ToolRegistry()
-    load_plugins(registry, [plugin])
-
+    plugin.register(registry)
     return registry, plugin
 
 
-def test_plugin_declares_home_capabilities() -> None:
+def test_plugin_declares_home_capabilities_through_core() -> None:
     _registry, plugin = build()
 
-    semantic = CapabilityRegistry.from_plugins([plugin])
-
-    assert semantic.domain_names() == ["home"]
-    assert semantic.capability_names() == [
+    assert [domain.identity for domain in plugin.domains] == ["home"]
+    assert [capability.identity for capability in plugin.capabilities] == [
         "home.control",
         "home.state",
     ]
-
-    assert semantic.describe_domains() == [
-        {
-            "name": "home",
-            "description": (
-                "Provider-neutral ownership of home state and control behavior."
-            ),
-            "owner_plugin": "home-assistant",
-        }
-    ]
+    validate_plugin_definition(plugin)
 
 
 def test_plugin_registers_read_and_action_tools() -> None:
     registry, _plugin = build()
-
     read = registry.get("home_assistant_get_state")
     action = registry.get("home_assistant_call_action")
 
@@ -100,47 +89,55 @@ def test_plugin_registers_read_and_action_tools() -> None:
 
 def test_read_executes_without_confirmation() -> None:
     registry, _plugin = build()
-
     result = ExecutionEngine(registry).execute(
         ExecutionRequest(
             tool_name="home_assistant_get_state",
             arguments={"target": "desk_light"},
         )
     )
-
     assert result.ok
     assert result.value["state"] == "off"
 
 
 def test_action_requires_confirmation() -> None:
     registry, _plugin = build()
-
     result = ExecutionEngine(registry).execute(
         ExecutionRequest(
             tool_name="home_assistant_call_action",
-            arguments={
-                "action": "turn_on",
-                "target": "desk_light",
-            },
+            arguments={"action": "turn_on", "target": "desk_light"},
         )
     )
-
     assert result.status is ExecutionStatus.CONFIRMATION_REQUIRED
 
 
 def test_confirmed_action_dispatches() -> None:
     registry, _plugin = build()
-
     result = ExecutionEngine(registry).execute(
         ExecutionRequest(
             tool_name="home_assistant_call_action",
-            arguments={
-                "action": "turn_on",
-                "target": "desk_light",
-            },
+            arguments={"action": "turn_on", "target": "desk_light"},
             confirmed=True,
         )
     )
-
     assert result.ok
     assert result.value["accepted"] is True
+
+
+def test_plugin_and_capabilities_report_usable_readiness() -> None:
+    _registry, plugin = build()
+
+    plugin_result = evaluate_availability_probe(plugin.readiness_probe)
+    assert plugin_result.state is AvailabilityState.USABLE
+
+    assert {
+        evaluate_availability_probe(capability.availability_probe).state
+        for capability in plugin.capabilities
+    } == {AvailabilityState.USABLE}
+
+
+def test_authentication_failure_is_structured_unavailable() -> None:
+    _registry, plugin = build(api_status=401)
+
+    result = evaluate_availability_probe(plugin.readiness_probe)
+    assert result.state is AvailabilityState.UNAVAILABLE
+    assert result.reason_code == "home_assistant_authentication_failed"

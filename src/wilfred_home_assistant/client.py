@@ -70,11 +70,7 @@ class HomeAssistantClient:
         json: dict[str, Any] | None = None,
     ) -> httpx.Response:
         try:
-            response = self._client.request(
-                method,
-                path,
-                json=json,
-            )
+            response = self._client.request(method, path, json=json)
         except httpx.HTTPError as exc:
             raise HomeAssistantConnectionError(
                 "Cannot connect to Home Assistant."
@@ -84,18 +80,15 @@ class HomeAssistantClient:
             raise HomeAssistantUnauthorizedError(
                 "Home Assistant rejected the configured credential."
             )
-
         if response.status_code == 404:
             raise HomeAssistantNotFoundError(
                 "Home Assistant resource was not found."
             )
-
         if response.is_error:
             raise HomeAssistantResponseError(
                 "Home Assistant returned HTTP "
                 f"{response.status_code}."
             )
-
         return response
 
     @staticmethod
@@ -107,28 +100,25 @@ class HomeAssistantClient:
                 "Home Assistant returned invalid JSON."
             ) from exc
 
-    def get_state(
-        self,
-        entity_id: str,
-    ) -> HomeAssistantState:
+    def check_api(self) -> None:
+        """Perform a READ-only API readiness check."""
+        payload = self._json(self._request("GET", "/api/"))
+        if not isinstance(payload, dict):
+            raise HomeAssistantResponseError(
+                "Home Assistant API readiness response must be an object."
+            )
+
+    def get_state(self, entity_id: str) -> HomeAssistantState:
         encoded = quote(entity_id, safe="._-")
-
-        response = self._request(
-            "GET",
-            f"/api/states/{encoded}",
-        )
-
+        response = self._request("GET", f"/api/states/{encoded}")
         payload = self._json(response)
-
         if not isinstance(payload, dict):
             raise HomeAssistantResponseError(
                 "Home Assistant state response must be an object."
             )
-
         state = payload.get("state")
         returned_entity_id = payload.get("entity_id")
         attributes = payload.get("attributes", {})
-
         if (
             not isinstance(state, str)
             or not isinstance(returned_entity_id, str)
@@ -137,13 +127,10 @@ class HomeAssistantClient:
             raise HomeAssistantResponseError(
                 "Home Assistant returned an invalid state object."
             )
-
         if state == "unavailable":
             raise HomeAssistantUnavailableError(
-                f"Home Assistant entity {returned_entity_id!r} "
-                "is unavailable."
+                f"Home Assistant entity {returned_entity_id!r} is unavailable."
             )
-
         return HomeAssistantState(
             entity_id=returned_entity_id,
             state=state,
@@ -160,20 +147,12 @@ class HomeAssistantClient:
     ) -> dict[str, Any]:
         response = self._request(
             "POST",
-            f"/api/services/{quote(domain, safe='_')}/"
-            f"{quote(service, safe='_')}",
+            f"/api/services/{quote(domain, safe='_')}/{quote(service, safe='_')}",
             json=service_data,
         )
-
         payload = self._json(response)
-
         if not isinstance(payload, (list, dict)):
             raise HomeAssistantResponseError(
-                "Home Assistant service response must be "
-                "a list or object."
+                "Home Assistant service response must be a list or object."
             )
-
-        return {
-            "accepted": True,
-            "response": payload,
-        }
+        return {"accepted": True, "response": payload}

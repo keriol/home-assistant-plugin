@@ -1,4 +1,4 @@
-name: Wilfred Home Assistant CI
+name: Home Assistant Plugin CI
 
 on:
   push:
@@ -48,8 +48,8 @@ jobs:
 
       - name: Clean-room wheel
         run: |
-          python -m venv /tmp/wilfred-ha-clean
-          source /tmp/wilfred-ha-clean/bin/activate
+          python -m venv /tmp/hap-clean
+          source /tmp/hap-clean/bin/activate
           python -m pip install --upgrade pip
           python -m pip install dist/*.whl
           python -m pip check

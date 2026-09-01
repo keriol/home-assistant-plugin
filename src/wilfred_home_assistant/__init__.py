@@ -1,9 +1,13 @@
-"""Official Home Assistant plugin for Wilfred."""
+"""Reusable Home Assistant plugin for Butler runtimes.
+
+The historical ``wilfred_home_assistant`` import namespace is retained as a
+compatibility surface while package ownership moves to Home Assistant Plugin.
+"""
 
 from importlib.metadata import PackageNotFoundError, version as package_version
 
 try:
-    __version__ = package_version("wilfred-home-assistant")
+    __version__ = package_version("butler-home-assistant")
 except PackageNotFoundError:
     __version__ = "0+unknown"
 

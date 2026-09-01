@@ -3,13 +3,13 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "wilfred-home-assistant"
-version = "0.1.0.dev0"
-description = "Official Home Assistant plugin for Wilfred"
+name = "butler-home-assistant"
+version = "0.2.0.dev0"
+description = "Reusable Home Assistant plugin for Butler runtimes"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "wilfred-butler @ git+https://github.com/keriol/butler-wilfred.git@86a7ab1282f0194207336306004fc581f8b22944",
+    "butler-core @ git+https://github.com/keriol/butler-core.git@827bbac1038b6591f88648e5b69e50ae66834c19",
     "httpx>=0.28,<1",
 ]
 
