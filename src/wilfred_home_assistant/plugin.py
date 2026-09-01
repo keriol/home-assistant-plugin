@@ -17,11 +17,13 @@ from butler_core import (
 from wilfred_home_assistant import __version__
 from wilfred_home_assistant.client import HomeAssistantClient
 from wilfred_home_assistant.config import HomeAssistantConfig, reject_target_override
+from wilfred_home_assistant.discovery import HomeAssistantDiscoveryClient
 from wilfred_home_assistant.errors import (
     HomeAssistantConnectionError,
     HomeAssistantResponseError,
     HomeAssistantUnauthorizedError,
 )
+from wilfred_home_assistant.introspection import HomeAssistantIntrospector
 
 
 HOME_DOMAIN = DomainDefinition(
@@ -71,10 +73,17 @@ def create_plugin(
     config: HomeAssistantConfig,
     *,
     client: HomeAssistantClient | None = None,
+    discovery: HomeAssistantDiscoveryClient | None = None,
 ) -> PluginDefinition:
     """Create a configured consumer-neutral Home Assistant plugin."""
 
     resolved_client = client or HomeAssistantClient(config)
+    resolved_discovery = discovery or HomeAssistantDiscoveryClient(config)
+    introspector = HomeAssistantIntrospector(
+        config,
+        resolved_client,
+        resolved_discovery,
+    )
     targets = sorted(config.targets)
     actions = sorted(config.actions)
 
@@ -100,6 +109,98 @@ def create_plugin(
                     "type": "object",
                     "properties": {
                         "target": {"type": "string", "enum": targets},
+                    },
+                    "required": ["target"],
+                    "additionalProperties": False,
+                },
+            )
+        )
+
+        registry.register(
+            ToolDefinition(
+                name="home_assistant_entity_exists",
+                description=(
+                    "Check whether a Home Assistant entity exists in provider-native "
+                    "discovery metadata. This does not authorize the entity."
+                ),
+                handler=lambda entity_id: {
+                    "entity_id": entity_id,
+                    "exists": introspector.entity_exists(entity_id),
+                },
+                permission=ToolPermission.READ,
+                category="home-assistant",
+                parameters={
+                    "type": "object",
+                    "properties": {"entity_id": {"type": "string"}},
+                    "required": ["entity_id"],
+                    "additionalProperties": False,
+                },
+            )
+        )
+
+        registry.register(
+            ToolDefinition(
+                name="home_assistant_describe_entity",
+                description=(
+                    "Describe a Home Assistant entity using provider metadata, current "
+                    "state and applicable provider actions without authorizing it."
+                ),
+                handler=lambda entity_id: introspector.inspect_entity(
+                    entity_id
+                ).to_dict(),
+                permission=ToolPermission.READ,
+                category="home-assistant",
+                parameters={
+                    "type": "object",
+                    "properties": {"entity_id": {"type": "string"}},
+                    "required": ["entity_id"],
+                    "additionalProperties": False,
+                },
+            )
+        )
+
+        registry.register(
+            ToolDefinition(
+                name="home_assistant_list_entity_actions",
+                description=(
+                    "List Home Assistant provider actions applicable to an entity. "
+                    "Provider applicability does not imply Butler authorization."
+                ),
+                handler=lambda entity_id: {
+                    "entity_id": entity_id,
+                    "provider_actions": list(
+                        resolved_discovery.services_for_entity(entity_id)
+                    ),
+                },
+                permission=ToolPermission.READ,
+                category="home-assistant",
+                parameters={
+                    "type": "object",
+                    "properties": {"entity_id": {"type": "string"}},
+                    "required": ["entity_id"],
+                    "additionalProperties": False,
+                },
+            )
+        )
+
+        registry.register(
+            ToolDefinition(
+                name="home_assistant_validate_mapping",
+                description=(
+                    "Validate a configured logical target and optional authorized action "
+                    "against current Home Assistant provider facts."
+                ),
+                handler=lambda target, action=None: introspector.validate_mapping(
+                    target,
+                    action,
+                ).to_dict(),
+                permission=ToolPermission.READ,
+                category="home-assistant",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "target": {"type": "string"},
+                        "action": {"type": "string"},
                     },
                     "required": ["target"],
                     "additionalProperties": False,

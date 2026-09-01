@@ -50,7 +50,11 @@ def test_factory_builds_configured_plugin(tmp_path: Path) -> None:
     ]
     assert registry.names() == [
         "home_assistant_call_action",
+        "home_assistant_describe_entity",
+        "home_assistant_entity_exists",
         "home_assistant_get_state",
+        "home_assistant_list_entity_actions",
+        "home_assistant_validate_mapping",
     ]
 
 

@@ -33,6 +33,11 @@ from wilfred_home_assistant.errors import (
     HomeAssistantUnauthorizedError,
     HomeAssistantUnavailableError,
 )
+from wilfred_home_assistant.introspection import (
+    HomeAssistantIntrospector,
+    HomeAssistantMappingValidation,
+    HomeAssistantResourceInspection,
+)
 from wilfred_home_assistant.plugin import create_plugin
 from wilfred_home_assistant.setup import (
     HOME_ASSISTANT_SETUP,
@@ -53,7 +58,10 @@ __all__ = [
     "HomeAssistantConnectionError",
     "HomeAssistantDiscoveryClient",
     "HomeAssistantError",
+    "HomeAssistantIntrospector",
+    "HomeAssistantMappingValidation",
     "HomeAssistantNotFoundError",
+    "HomeAssistantResourceInspection",
     "HomeAssistantResponseError",
     "HomeAssistantState",
     "HomeAssistantUnauthorizedError",
