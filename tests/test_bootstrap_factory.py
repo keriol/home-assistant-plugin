@@ -2,15 +2,10 @@ from pathlib import Path
 
 import pytest
 
-from wilfred import ToolRegistry
-from wilfred.plugins import load_plugins
+from butler_core import ToolRegistry, validate_plugin_definition
 
-from wilfred_home_assistant.bootstrap import (
-    create_plugin_from_environment,
-)
-from wilfred_home_assistant.errors import (
-    HomeAssistantConfigurationError,
-)
+from wilfred_home_assistant.bootstrap import create_plugin_from_environment
+from wilfred_home_assistant.errors import HomeAssistantConfigurationError
 
 
 def write_config(path: Path) -> None:
@@ -31,73 +26,64 @@ brightness = 100
     )
 
 
-def test_factory_builds_configured_plugin(
-    tmp_path: Path,
-) -> None:
+def test_factory_builds_configured_plugin(tmp_path: Path) -> None:
     config = tmp_path / "home-assistant.toml"
     write_config(config)
 
     plugin = create_plugin_from_environment(
         {
-            "WILFRED_HOME_ASSISTANT_URL":
-                "http://ha.example:8123",
-            "WILFRED_HOME_ASSISTANT_TOKEN":
-                "test-token",
-            "WILFRED_HOME_ASSISTANT_CONFIG":
-                str(config),
+            "HAP_HOME_ASSISTANT_URL": "http://ha.example:8123",
+            "HAP_HOME_ASSISTANT_TOKEN": "test-token",
+            "HAP_HOME_ASSISTANT_CONFIG": str(config),
         }
     )
 
     registry = ToolRegistry()
-
-    results = load_plugins(
-        registry,
-        [plugin],
-    )
+    plugin.register(registry)
+    validate_plugin_definition(plugin)
 
     assert plugin.name == "home-assistant"
     assert [domain.identity for domain in plugin.domains] == ["home"]
-    assert [
-        capability.identity
-        for capability in plugin.capabilities
-    ] == [
+    assert [capability.identity for capability in plugin.capabilities] == [
         "home.control",
         "home.state",
     ]
-
     assert registry.names() == [
         "home_assistant_call_action",
         "home_assistant_get_state",
     ]
 
-    assert results[0].plugin_name == "home-assistant"
-    assert results[0].domain_names == ("home",)
-    assert results[0].capability_names == (
-        "home.control",
-        "home.state",
+
+def test_factory_accepts_legacy_wilfred_environment_names(tmp_path: Path) -> None:
+    config = tmp_path / "home-assistant.toml"
+    write_config(config)
+
+    plugin = create_plugin_from_environment(
+        {
+            "WILFRED_HOME_ASSISTANT_URL": "http://ha.example:8123",
+            "WILFRED_HOME_ASSISTANT_TOKEN": "test-token",
+            "WILFRED_HOME_ASSISTANT_CONFIG": str(config),
+        }
     )
 
+    assert plugin.name == "home-assistant"
 
-def test_factory_requires_config_path() -> None:
+
+def test_factory_requires_canonical_config_path() -> None:
     with pytest.raises(
         HomeAssistantConfigurationError,
-        match="WILFRED_HOME_ASSISTANT_CONFIG",
+        match="HAP_HOME_ASSISTANT_CONFIG",
     ):
         create_plugin_from_environment(
             {
-                "WILFRED_HOME_ASSISTANT_URL":
-                    "http://ha.example:8123",
-                "WILFRED_HOME_ASSISTANT_TOKEN":
-                    "test-token",
+                "HAP_HOME_ASSISTANT_URL": "http://ha.example:8123",
+                "HAP_HOME_ASSISTANT_TOKEN": "test-token",
             }
         )
 
 
-def test_factory_rejects_unknown_sections(
-    tmp_path: Path,
-) -> None:
+def test_factory_rejects_unknown_sections(tmp_path: Path) -> None:
     config = tmp_path / "home-assistant.toml"
-
     config.write_text(
         """
 [targets]
@@ -114,17 +100,11 @@ unexpected = true
         encoding="utf-8",
     )
 
-    with pytest.raises(
-        HomeAssistantConfigurationError,
-        match="Unknown",
-    ):
+    with pytest.raises(HomeAssistantConfigurationError, match="Unknown"):
         create_plugin_from_environment(
             {
-                "WILFRED_HOME_ASSISTANT_URL":
-                    "http://ha.example:8123",
-                "WILFRED_HOME_ASSISTANT_TOKEN":
-                    "test-token",
-                "WILFRED_HOME_ASSISTANT_CONFIG":
-                    str(config),
+                "HAP_HOME_ASSISTANT_URL": "http://ha.example:8123",
+                "HAP_HOME_ASSISTANT_TOKEN": "test-token",
+                "HAP_HOME_ASSISTANT_CONFIG": str(config),
             }
         )
