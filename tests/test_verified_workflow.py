@@ -1,13 +1,6 @@
 import httpx
 
-from wilfred import (
-    ExecutionRequest,
-    ReadActionVerifyRequest,
-    ReadActionVerifyWorkflow,
-    ToolRegistry,
-    VerificationStatus,
-)
-from wilfred.plugins import load_plugins
+from butler_core import ExecutionEngine, ExecutionRequest, ToolRegistry
 
 from wilfred_home_assistant import (
     HomeAssistantAction,
@@ -33,7 +26,6 @@ def configured_registry(*, apply_action: bool) -> ToolRegistry:
 
         if apply_action:
             state["value"] = "on"
-
         return httpx.Response(200, json=[])
 
     config = HomeAssistantConfig(
@@ -54,54 +46,48 @@ def configured_registry(*, apply_action: bool) -> ToolRegistry:
     )
 
     registry = ToolRegistry()
-    load_plugins(
-        registry,
-        [create_plugin(config, client=client)],
-    )
-
+    create_plugin(config, client=client).register(registry)
     return registry
 
 
-def workflow_request() -> ReadActionVerifyRequest:
-    return ReadActionVerifyRequest(
-        read_before=ExecutionRequest(
+def execute_read_action_read(*, apply_action: bool) -> tuple[str, bool, str]:
+    engine = ExecutionEngine(configured_registry(apply_action=apply_action))
+
+    before = engine.execute(
+        ExecutionRequest(
             tool_name="home_assistant_get_state",
             arguments={"target": "desk_light"},
-        ),
-        action=ExecutionRequest(
+        )
+    )
+    action = engine.execute(
+        ExecutionRequest(
             tool_name="home_assistant_call_action",
-            arguments={
-                "action": "turn_on",
-                "target": "desk_light",
-            },
+            arguments={"action": "turn_on", "target": "desk_light"},
             confirmed=True,
-        ),
-        read_after=ExecutionRequest(
+        )
+    )
+    after = engine.execute(
+        ExecutionRequest(
             tool_name="home_assistant_get_state",
             arguments={"target": "desk_light"},
-        ),
-        verifier=lambda before, _action, after: (
-            before["state"] == "off"
-            and after["state"] == "on"
-        ),
+        )
     )
 
-
-def test_real_observed_change_is_verified() -> None:
-    result = ReadActionVerifyWorkflow(
-        configured_registry(apply_action=True)
-    ).execute(workflow_request())
-
-    assert result.status is VerificationStatus.VERIFIED
-    assert result.ok
+    assert before.ok
+    assert action.ok
+    assert after.ok
+    return before.value["state"], action.ok, after.value["state"]
 
 
-def test_successful_dispatch_without_state_change_fails() -> None:
-    result = ReadActionVerifyWorkflow(
-        configured_registry(apply_action=False)
-    ).execute(workflow_request())
+def test_real_observed_change_is_verifiable() -> None:
+    before, action_ok, after = execute_read_action_read(apply_action=True)
+    assert action_ok
+    assert before == "off"
+    assert after == "on"
 
-    assert result.status is VerificationStatus.FAILED
-    assert result.error_code == "verification_failed"
-    assert result.action is not None
-    assert result.action.ok
+
+def test_successful_dispatch_without_state_change_is_not_verified() -> None:
+    before, action_ok, after = execute_read_action_read(apply_action=False)
+    assert action_ok
+    assert before == "off"
+    assert after == "off"
