@@ -7,7 +7,6 @@ from typing import Any
 
 from butler_core import AvailabilityResult, AvailabilityState
 
-from wilfred_home_assistant.bootstrap import CONFIG_ENV, LEGACY_CONFIG_ENV
 from wilfred_home_assistant.config import (
     LEGACY_TOKEN_ENV,
     LEGACY_URL_ENV,
@@ -16,6 +15,10 @@ from wilfred_home_assistant.config import (
     HomeAssistantConnectionConfig,
 )
 from wilfred_home_assistant.errors import HomeAssistantConfigurationError
+
+
+CONFIG_ENV = "HAP_HOME_ASSISTANT_CONFIG"
+LEGACY_CONFIG_ENV = "WILFRED_HOME_ASSISTANT_CONFIG"
 
 
 class SetupFieldKind(str, Enum):
