@@ -45,37 +45,9 @@ def _environment_value(
 
 
 @dataclass(frozen=True)
-class HomeAssistantAction:
-    domain: str
-    service: str
-    data: Mapping[str, Any] = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        domain = self.domain.strip()
-        service = self.service.strip()
-        if _SERVICE.fullmatch(domain) is None:
-            raise HomeAssistantConfigurationError(
-                f"Invalid Home Assistant domain: {self.domain!r}."
-            )
-        if _SERVICE.fullmatch(service) is None:
-            raise HomeAssistantConfigurationError(
-                f"Invalid Home Assistant service: {self.service!r}."
-            )
-        forbidden = sorted(_RESERVED_TARGET_KEYS.intersection(self.data))
-        if forbidden:
-            raise HomeAssistantConfigurationError(
-                "Action defaults cannot override target fields: "
-                + ", ".join(forbidden)
-                + "."
-            )
-
-
-@dataclass(frozen=True)
-class HomeAssistantConfig:
+class HomeAssistantConnectionConfig:
     base_url: str
     token: str = field(repr=False)
-    targets: Mapping[str, str] = field(default_factory=dict)
-    actions: Mapping[str, HomeAssistantAction] = field(default_factory=dict)
     timeout_seconds: float = 10.0
 
     def __post_init__(self) -> None:
@@ -103,6 +75,64 @@ class HomeAssistantConfig:
             raise HomeAssistantConfigurationError(
                 "Home Assistant timeout must be greater than zero."
             )
+
+        object.__setattr__(self, "base_url", base_url)
+        object.__setattr__(self, "token", token)
+
+    @classmethod
+    def from_environment(
+        cls,
+        *,
+        environ: Mapping[str, str] | None = None,
+        timeout_seconds: float = 10.0,
+    ) -> "HomeAssistantConnectionConfig":
+        values = os.environ if environ is None else environ
+        base_url = _environment_value(values, URL_ENV, LEGACY_URL_ENV)
+        token = _environment_value(values, TOKEN_ENV, LEGACY_TOKEN_ENV)
+        return cls(
+            base_url=base_url,
+            token=token,
+            timeout_seconds=timeout_seconds,
+        )
+
+
+@dataclass(frozen=True)
+class HomeAssistantAction:
+    domain: str
+    service: str
+    data: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        domain = self.domain.strip()
+        service = self.service.strip()
+        if _SERVICE.fullmatch(domain) is None:
+            raise HomeAssistantConfigurationError(
+                f"Invalid Home Assistant domain: {self.domain!r}."
+            )
+        if _SERVICE.fullmatch(service) is None:
+            raise HomeAssistantConfigurationError(
+                f"Invalid Home Assistant service: {self.service!r}."
+            )
+        forbidden = sorted(_RESERVED_TARGET_KEYS.intersection(self.data))
+        if forbidden:
+            raise HomeAssistantConfigurationError(
+                "Action defaults cannot override target fields: "
+                + ", ".join(forbidden)
+                + "."
+            )
+
+        object.__setattr__(self, "domain", domain)
+        object.__setattr__(self, "service", service)
+
+
+@dataclass(frozen=True)
+class HomeAssistantConfig(HomeAssistantConnectionConfig):
+    targets: Mapping[str, str] = field(default_factory=dict)
+    actions: Mapping[str, HomeAssistantAction] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+
         if not self.targets:
             raise HomeAssistantConfigurationError(
                 "At least one logical Home Assistant target is required."
@@ -131,8 +161,6 @@ class HomeAssistantConfig:
                 )
             normalized_actions[logical] = action
 
-        object.__setattr__(self, "base_url", base_url)
-        object.__setattr__(self, "token", token)
         object.__setattr__(self, "targets", normalized_targets)
         object.__setattr__(self, "actions", normalized_actions)
 
