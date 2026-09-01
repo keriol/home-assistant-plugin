@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 import json
 from typing import Any
@@ -18,6 +18,7 @@ from wilfred_home_assistant.errors import (
 
 
 ENTITY_REGISTRY_DISPLAY_COMMAND = "config/entity_registry/list_for_display"
+SERVICES_FOR_TARGET_COMMAND = "get_services_for_target"
 
 
 @dataclass(frozen=True)
@@ -91,6 +92,16 @@ def normalize_entity_registry_display(
     return tuple(sorted(entities, key=lambda item: item.entity_id))
 
 
+def normalize_services_for_target(payload: Any) -> tuple[str, ...]:
+    if not isinstance(payload, list) or not all(
+        isinstance(item, str) for item in payload
+    ):
+        raise HomeAssistantResponseError(
+            "Home Assistant target action response must be a list of identifiers."
+        )
+    return tuple(sorted(set(payload)))
+
+
 class HomeAssistantDiscoveryClient:
     """READ-only provider discovery backed by Home Assistant native metadata."""
 
@@ -98,7 +109,7 @@ class HomeAssistantDiscoveryClient:
         self,
         config: HomeAssistantConnectionConfig,
         *,
-        command_transport: Callable[[str], Any] | None = None,
+        command_transport: Callable[[str, Mapping[str, Any]], Any] | None = None,
     ) -> None:
         self._config = config
         self._command_transport = command_transport
@@ -108,9 +119,14 @@ class HomeAssistantDiscoveryClient:
         scheme = "wss" if parsed.scheme == "https" else "ws"
         return urlunsplit((scheme, parsed.netloc, "/api/websocket", "", ""))
 
-    def _command(self, command_type: str) -> Any:
+    def _command(
+        self,
+        command_type: str,
+        payload: Mapping[str, Any] | None = None,
+    ) -> Any:
+        command_payload = dict(payload or {})
         if self._command_transport is not None:
-            return self._command_transport(command_type)
+            return self._command_transport(command_type, command_payload)
 
         try:
             with connect(
@@ -142,7 +158,9 @@ class HomeAssistantDiscoveryClient:
                         "Home Assistant WebSocket authentication response is invalid."
                     )
 
-                websocket.send(json.dumps({"id": 1, "type": command_type}))
+                request = {"id": 1, "type": command_type}
+                request.update(command_payload)
+                websocket.send(json.dumps(request))
                 response = json.loads(websocket.recv())
         except HomeAssistantUnauthorizedError:
             raise
@@ -172,10 +190,23 @@ class HomeAssistantDiscoveryClient:
             self._command(ENTITY_REGISTRY_DISPLAY_COMMAND)
         )
 
+    def services_for_entity(self, entity_id: str) -> tuple[str, ...]:
+        return normalize_services_for_target(
+            self._command(
+                SERVICES_FOR_TARGET_COMMAND,
+                {
+                    "target": {"entity_id": [entity_id]},
+                    "expand_group": False,
+                },
+            )
+        )
+
 
 __all__ = [
     "DiscoveredHomeAssistantEntity",
     "ENTITY_REGISTRY_DISPLAY_COMMAND",
     "HomeAssistantDiscoveryClient",
+    "SERVICES_FOR_TARGET_COMMAND",
     "normalize_entity_registry_display",
+    "normalize_services_for_target",
 ]
