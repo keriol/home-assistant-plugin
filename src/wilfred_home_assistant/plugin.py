@@ -84,7 +84,12 @@ def create_plugin(
         resolved_client,
         resolved_discovery,
     )
-    targets = sorted(config.targets)
+    action_targets = sorted(config.targets)
+    read_targets = sorted(
+        name
+        for name in config.targets
+        if config.resolve_target_definition(name).entity_id is not None
+    )
     actions = sorted(config.actions)
 
     def readiness() -> AvailabilityResult:
@@ -108,7 +113,7 @@ def create_plugin(
                 parameters={
                     "type": "object",
                     "properties": {
-                        "target": {"type": "string", "enum": targets},
+                        "target": {"type": "string", "enum": read_targets},
                     },
                     "required": ["target"],
                     "additionalProperties": False,
@@ -214,12 +219,12 @@ def create_plugin(
             data: Mapping[str, Any] | None = None,
         ) -> dict[str, Any]:
             action_definition = config.resolve_action(action)
-            entity_id = config.resolve_target(target)
+            target_selector = config.resolve_action_target(target)
             overrides = dict(data or {})
             reject_target_override(overrides)
             payload = dict(action_definition.data)
             payload.update(overrides)
-            payload["entity_id"] = entity_id
+            payload.update(target_selector)
             return resolved_client.call_service(
                 action_definition.domain,
                 action_definition.service,
@@ -241,7 +246,7 @@ def create_plugin(
                     "type": "object",
                     "properties": {
                         "action": {"type": "string", "enum": actions},
-                        "target": {"type": "string", "enum": targets},
+                        "target": {"type": "string", "enum": action_targets},
                         "data": {"type": "object"},
                     },
                     "required": ["action", "target"],

@@ -190,16 +190,44 @@ class HomeAssistantDiscoveryClient:
             self._command(ENTITY_REGISTRY_DISPLAY_COMMAND)
         )
 
-    def services_for_entity(self, entity_id: str) -> tuple[str, ...]:
+    def services_for_target(
+        self,
+        selector: Mapping[str, str],
+    ) -> tuple[str, ...]:
+        allowed = {"device_id", "entity_id"}
+        keys = set(selector)
+
+        if len(selector) != 1 or not keys.issubset(allowed):
+            raise HomeAssistantResponseError(
+                "Home Assistant target selector must contain exactly one "
+                "authorized entity_id or device_id."
+            )
+
+        if not all(
+            isinstance(value, str) and value.strip()
+            for value in selector.values()
+        ):
+            raise HomeAssistantResponseError(
+                "Home Assistant target selector values must be non-empty strings."
+            )
+
+        target = {
+            key: [value]
+            for key, value in selector.items()
+        }
+
         return normalize_services_for_target(
             self._command(
                 SERVICES_FOR_TARGET_COMMAND,
                 {
-                    "target": {"entity_id": [entity_id]},
+                    "target": target,
                     "expand_group": False,
                 },
             )
         )
+
+    def services_for_entity(self, entity_id: str) -> tuple[str, ...]:
+        return self.services_for_target({"entity_id": entity_id})
 
 
 __all__ = [

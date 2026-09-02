@@ -126,8 +126,56 @@ class HomeAssistantAction:
 
 
 @dataclass(frozen=True)
+class HomeAssistantTarget:
+    """Authorized logical Home Assistant target."""
+
+    entity_id: str | None = None
+    device_id: str | None = None
+
+    def __post_init__(self) -> None:
+        entity_id = self.entity_id
+        device_id = self.device_id
+
+        if entity_id is not None:
+            if not isinstance(entity_id, str):
+                raise HomeAssistantConfigurationError(
+                    "Home Assistant target entity_id must be a string."
+                )
+            entity_id = entity_id.strip()
+            if _ENTITY_ID.fullmatch(entity_id) is None:
+                raise HomeAssistantConfigurationError(
+                    f"Invalid Home Assistant target entity_id: {self.entity_id!r}."
+                )
+
+        if device_id is not None:
+            if not isinstance(device_id, str):
+                raise HomeAssistantConfigurationError(
+                    "Home Assistant target device_id must be a string."
+                )
+            device_id = device_id.strip()
+            if not device_id:
+                raise HomeAssistantConfigurationError(
+                    "Home Assistant target device_id cannot be empty."
+                )
+
+        if entity_id is None and device_id is None:
+            raise HomeAssistantConfigurationError(
+                "Home Assistant target requires entity_id and/or device_id."
+            )
+
+        object.__setattr__(self, "entity_id", entity_id)
+        object.__setattr__(self, "device_id", device_id)
+
+    def action_selector(self) -> dict[str, str]:
+        if self.device_id is not None:
+            return {"device_id": self.device_id}
+        assert self.entity_id is not None
+        return {"entity_id": self.entity_id}
+
+
+@dataclass(frozen=True)
 class HomeAssistantConfig(HomeAssistantConnectionConfig):
-    targets: Mapping[str, str] = field(default_factory=dict)
+    targets: Mapping[str, str | HomeAssistantTarget] = field(default_factory=dict)
     actions: Mapping[str, HomeAssistantAction] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -142,15 +190,23 @@ class HomeAssistantConfig(HomeAssistantConnectionConfig):
                 "At least one authorized Home Assistant action is required."
             )
 
-        normalized_targets: dict[str, str] = {}
-        for name, entity_id in self.targets.items():
+        normalized_targets: dict[str, str | HomeAssistantTarget] = {}
+        for name, target in self.targets.items():
             logical = _logical_name(name, kind="target")
-            entity = entity_id.strip()
-            if _ENTITY_ID.fullmatch(entity) is None:
+            if isinstance(target, str):
+                entity = target.strip()
+                if _ENTITY_ID.fullmatch(entity) is None:
+                    raise HomeAssistantConfigurationError(
+                        f"Invalid entity_id for target {logical!r}: {target!r}."
+                    )
+                normalized_targets[logical] = entity
+                continue
+
+            if not isinstance(target, HomeAssistantTarget):
                 raise HomeAssistantConfigurationError(
-                    f"Invalid entity_id for target {logical!r}: {entity_id!r}."
+                    f"Target {logical!r} must be an entity_id string or HomeAssistantTarget."
                 )
-            normalized_targets[logical] = entity
+            normalized_targets[logical] = target
 
         normalized_actions: dict[str, HomeAssistantAction] = {}
         for name, action in self.actions.items():
@@ -168,7 +224,7 @@ class HomeAssistantConfig(HomeAssistantConnectionConfig):
     def from_environment(
         cls,
         *,
-        targets: Mapping[str, str],
+        targets: Mapping[str, str | HomeAssistantTarget],
         actions: Mapping[str, HomeAssistantAction],
         environ: Mapping[str, str] | None = None,
         timeout_seconds: float = 10.0,
@@ -184,13 +240,28 @@ class HomeAssistantConfig(HomeAssistantConnectionConfig):
             timeout_seconds=timeout_seconds,
         )
 
-    def resolve_target(self, name: str) -> str:
+    def resolve_target_definition(self, name: str) -> HomeAssistantTarget:
         try:
-            return self.targets[name]
+            target = self.targets[name]
         except KeyError as exc:
             raise HomeAssistantConfigurationError(
                 f"Unknown Home Assistant target: {name!r}."
             ) from exc
+
+        if isinstance(target, str):
+            return HomeAssistantTarget(entity_id=target)
+        return target
+
+    def resolve_target(self, name: str) -> str:
+        target = self.resolve_target_definition(name)
+        if target.entity_id is None:
+            raise HomeAssistantConfigurationError(
+                f"Home Assistant target {name!r} is ACTION-only and has no observable entity_id."
+            )
+        return target.entity_id
+
+    def resolve_action_target(self, name: str) -> dict[str, str]:
+        return self.resolve_target_definition(name).action_selector()
 
     def resolve_action(self, name: str) -> HomeAssistantAction:
         try:

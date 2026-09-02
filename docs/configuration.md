@@ -21,8 +21,25 @@ Example:
 
     desk_light -> light.demo_desk
 
-The planner sees the logical target, while Home Assistant-specific identifiers
-remain integration configuration.
+The historical entity-only TOML form remains supported:
+
+    [targets]
+    desk_light = "light.demo_desk"
+
+ACTION targets can instead use an explicit Home Assistant selector:
+
+    [targets]
+    tv_remote = { device_id = "device-demo-tv" }
+
+A logical target may declare both an observable entity and an ACTION device:
+
+    [targets]
+    tv_remote = { entity_id = "remote.demo_tv", device_id = "device-demo-tv" }
+
+When both are present, READ/VERIFY uses `entity_id` while ACTION dispatch uses
+`device_id`. A device-only target is ACTION-only and is not exposed as a
+readable state target. Provider identifiers remain integration configuration
+and discovery never authorizes arbitrary targets.
 
 ## Authorized actions
 

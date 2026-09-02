@@ -17,6 +17,7 @@ from wilfred_home_assistant import (
     HomeAssistantAction,
     HomeAssistantClient,
     HomeAssistantConfig,
+    HomeAssistantTarget,
     create_plugin,
 )
 
@@ -141,3 +142,43 @@ def test_authentication_failure_is_structured_unavailable() -> None:
     result = evaluate_availability_probe(plugin.readiness_probe)
     assert result.state is AvailabilityState.UNAVAILABLE
     assert result.reason_code == "home_assistant_authentication_failed"
+
+
+def test_confirmed_action_can_dispatch_to_authorized_device_id() -> None:
+    observed: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/":
+            return httpx.Response(200, json={"message": "API running."})
+        payload = json.loads(request.content)
+        observed["payload"] = payload
+        return httpx.Response(200, json=[])
+
+    config = HomeAssistantConfig(
+        base_url="http://ha.example:8123",
+        token="token",
+        targets={"tv_remote": HomeAssistantTarget(device_id="device-demo-tv")},
+        actions={"turn_on": HomeAssistantAction(domain="remote", service="turn_on")},
+    )
+    client = HomeAssistantClient(config, transport=httpx.MockTransport(handler))
+    plugin = create_plugin(config, client=client)
+    registry = ToolRegistry()
+    plugin.register(registry)
+
+    result = ExecutionEngine(registry).execute(
+        ExecutionRequest(
+            tool_name="home_assistant_call_action",
+            arguments={"action": "turn_on", "target": "tv_remote"},
+            confirmed=True,
+        )
+    )
+
+    assert result.ok
+    assert observed["payload"] == {"device_id": "device-demo-tv"}
+
+    read_tool = registry.get("home_assistant_get_state")
+    action_tool = registry.get("home_assistant_call_action")
+    assert read_tool is not None
+    assert action_tool is not None
+    assert read_tool.parameters["properties"]["target"]["enum"] == []
+    assert action_tool.parameters["properties"]["target"]["enum"] == ["tv_remote"]

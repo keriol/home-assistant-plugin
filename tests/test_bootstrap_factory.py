@@ -4,7 +4,8 @@ import pytest
 
 from butler_core import ToolRegistry, validate_plugin_definition
 
-from wilfred_home_assistant.bootstrap import create_plugin_from_environment
+from wilfred_home_assistant import HomeAssistantTarget
+from wilfred_home_assistant.bootstrap import _load_mapping, create_plugin_from_environment
 from wilfred_home_assistant.errors import HomeAssistantConfigurationError
 
 
@@ -112,3 +113,25 @@ unexpected = true
                 "HAP_HOME_ASSISTANT_CONFIG": str(config),
             }
         )
+
+
+def test_mapping_accepts_typed_device_target(tmp_path: Path) -> None:
+    config = tmp_path / "home-assistant.toml"
+    config.write_text(
+        """
+[targets]
+demo_light = "light.demo"
+tv_remote = { device_id = "device-demo-tv" }
+tv_remote_verified = { entity_id = "remote.demo_tv", device_id = "device-demo-tv" }
+
+[actions.turn_on]
+domain = "remote"
+service = "turn_on"
+""".strip() + "\n",
+        encoding="utf-8",
+    )
+
+    targets, _actions = _load_mapping(config)
+    assert targets["demo_light"] == "light.demo"
+    assert targets["tv_remote"] == HomeAssistantTarget(device_id="device-demo-tv")
+    assert targets["tv_remote_verified"] == HomeAssistantTarget(entity_id="remote.demo_tv", device_id="device-demo-tv")
