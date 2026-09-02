@@ -19,6 +19,7 @@ from wilfred_home_assistant.config import (
     HomeAssistantAction,
     HomeAssistantConfig,
     HomeAssistantConnectionConfig,
+    HomeAssistantTarget,
 )
 from wilfred_home_assistant.discovery import (
     DiscoveredHomeAssistantEntity,
@@ -57,6 +58,7 @@ __all__ = [
     "HomeAssistantConnectionConfig",
     "HomeAssistantConnectionError",
     "HomeAssistantDiscoveryClient",
+    "HomeAssistantTarget",
     "HomeAssistantError",
     "HomeAssistantIntrospector",
     "HomeAssistantMappingValidation",

@@ -7,7 +7,11 @@ from typing import Any
 
 from butler_core import PluginDefinition
 
-from wilfred_home_assistant.config import HomeAssistantAction, HomeAssistantConfig
+from wilfred_home_assistant.config import (
+    HomeAssistantAction,
+    HomeAssistantConfig,
+    HomeAssistantTarget,
+)
 from wilfred_home_assistant.errors import HomeAssistantConfigurationError
 from wilfred_home_assistant.plugin import create_plugin
 
@@ -17,6 +21,7 @@ LEGACY_CONFIG_ENV = "WILFRED_HOME_ASSISTANT_CONFIG"
 
 _ALLOWED_TOP_LEVEL = frozenset({"actions", "targets"})
 _ALLOWED_ACTION_KEYS = frozenset({"data", "domain", "service"})
+_ALLOWED_TARGET_KEYS = frozenset({"device_id", "entity_id"})
 
 
 def _require_table(document: Mapping[str, Any], key: str) -> Mapping[str, Any]:
@@ -30,7 +35,7 @@ def _require_table(document: Mapping[str, Any], key: str) -> Mapping[str, Any]:
 
 def _load_mapping(
     path: Path,
-) -> tuple[dict[str, str], dict[str, HomeAssistantAction]]:
+) -> tuple[dict[str, str | HomeAssistantTarget], dict[str, HomeAssistantAction]]:
     if not path.is_file():
         raise HomeAssistantConfigurationError(
             f"Home Assistant configuration file does not exist: {path}"
@@ -57,13 +62,35 @@ def _load_mapping(
     raw_targets = _require_table(document, "targets")
     raw_actions = _require_table(document, "actions")
 
-    targets: dict[str, str] = {}
+    targets: dict[str, str | HomeAssistantTarget] = {}
     for name, value in raw_targets.items():
-        if not isinstance(value, str):
+        if isinstance(value, str):
+            targets[name] = value
+            continue
+
+        if not isinstance(value, dict):
             raise HomeAssistantConfigurationError(
-                f"Target {name!r} must map to a string entity_id."
+                f"Target {name!r} must map to a string entity_id or selector table."
             )
-        targets[name] = value
+
+        unknown_target_keys = sorted(set(value) - _ALLOWED_TARGET_KEYS)
+        if unknown_target_keys:
+            raise HomeAssistantConfigurationError(
+                f"Unknown keys for target {name!r}: " + ", ".join(unknown_target_keys)
+            )
+
+        entity_id = value.get("entity_id")
+        device_id = value.get("device_id")
+        if entity_id is not None and not isinstance(entity_id, str):
+            raise HomeAssistantConfigurationError(
+                f"Target {name!r}.entity_id must be a string."
+            )
+        if device_id is not None and not isinstance(device_id, str):
+            raise HomeAssistantConfigurationError(
+                f"Target {name!r}.device_id must be a string."
+            )
+
+        targets[name] = HomeAssistantTarget(entity_id=entity_id, device_id=device_id)
 
     actions: dict[str, HomeAssistantAction] = {}
     for name, value in raw_actions.items():

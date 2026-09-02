@@ -93,8 +93,8 @@ class HomeAssistantIntrospector:
         mapped_targets = tuple(
             sorted(
                 name
-                for name, configured_entity_id in self._config.targets.items()
-                if configured_entity_id == entity_id
+                for name in self._config.targets
+                if self._config.resolve_target_definition(name).entity_id == entity_id
             )
         )
         if discovered is None:
@@ -126,8 +126,7 @@ class HomeAssistantIntrospector:
         target: str,
         action: str | None = None,
     ) -> HomeAssistantMappingValidation:
-        entity_id = self._config.targets.get(target)
-        if entity_id is None:
+        if target not in self._config.targets:
             return HomeAssistantMappingValidation(
                 target=target,
                 action=action,
@@ -140,7 +139,62 @@ class HomeAssistantIntrospector:
                 reason_code="target_not_mapped",
             )
 
-        provider_exists = self.entity_exists(entity_id)
+        target_definition = self._config.resolve_target_definition(target)
+        entity_id = target_definition.entity_id
+
+        # READ semantics remain strictly entity-backed. A device selector
+        # does not invent an observable Home Assistant state endpoint.
+        if action is None:
+            if entity_id is None:
+                return HomeAssistantMappingValidation(
+                    target=target,
+                    action=None,
+                    entity_id=None,
+                    provider_exists=False,
+                    provider_supports_action=None,
+                    mapped=True,
+                    authorized=False,
+                    valid=False,
+                    reason_code="target_not_entity_backed",
+                )
+
+            provider_exists = self.entity_exists(entity_id)
+            if not provider_exists:
+                return HomeAssistantMappingValidation(
+                    target=target,
+                    action=None,
+                    entity_id=entity_id,
+                    provider_exists=False,
+                    provider_supports_action=None,
+                    mapped=True,
+                    authorized=False,
+                    valid=False,
+                    reason_code="provider_resource_missing",
+                )
+
+            return HomeAssistantMappingValidation(
+                target=target,
+                action=None,
+                entity_id=entity_id,
+                provider_exists=True,
+                provider_supports_action=None,
+                mapped=True,
+                authorized=True,
+                valid=True,
+                reason_code="mapping_valid",
+            )
+
+        selector = target_definition.action_selector()
+
+        if "device_id" in selector:
+            device_id = selector["device_id"]
+            provider_exists = any(
+                entity.device_id == device_id
+                for entity in self._entities().values()
+            )
+        else:
+            provider_exists = self.entity_exists(selector["entity_id"])
+
         if not provider_exists:
             return HomeAssistantMappingValidation(
                 target=target,
@@ -152,19 +206,6 @@ class HomeAssistantIntrospector:
                 authorized=False,
                 valid=False,
                 reason_code="provider_resource_missing",
-            )
-
-        if action is None:
-            return HomeAssistantMappingValidation(
-                target=target,
-                action=None,
-                entity_id=entity_id,
-                provider_exists=True,
-                provider_supports_action=None,
-                mapped=True,
-                authorized=True,
-                valid=True,
-                reason_code="mapping_valid",
             )
 
         action_definition = self._config.actions.get(action)
@@ -185,8 +226,9 @@ class HomeAssistantIntrospector:
             f"{action_definition.domain}.{action_definition.service}"
         )
         provider_supports = provider_action in set(
-            self._discovery.services_for_entity(entity_id)
+            self._discovery.services_for_target(selector)
         )
+
         return HomeAssistantMappingValidation(
             target=target,
             action=action,
@@ -202,6 +244,7 @@ class HomeAssistantIntrospector:
                 else "provider_action_not_applicable"
             ),
         )
+
 
 
 __all__ = [

@@ -6,6 +6,7 @@ from wilfred_home_assistant import (
     HomeAssistantAction,
     HomeAssistantClient,
     HomeAssistantConfig,
+    HomeAssistantTarget,
     create_plugin,
 )
 from wilfred_home_assistant.discovery import HomeAssistantDiscoveryClient
@@ -16,7 +17,12 @@ def build():
     config = HomeAssistantConfig(
         base_url="https://ha.example",
         token="secret-token",
-        targets={"desk_light": "light.demo_desk"},
+        targets={
+            "desk_light": "light.demo_desk",
+            "desk_device": HomeAssistantTarget(
+                device_id="device-demo-1",
+            ),
+        },
         actions={
             "turn_on": HomeAssistantAction(
                 domain="light",
@@ -65,9 +71,15 @@ def build():
                 ]
             }
         if command_type == "get_services_for_target":
-            entity_ids = payload["target"]["entity_id"]  # type: ignore[index]
-            if entity_ids == ["light.demo_desk"]:
+            target = payload["target"]
+            assert isinstance(target, dict)
+
+            if target.get("entity_id") == ["light.demo_desk"]:
                 return ["light.turn_off", "light.turn_on"]
+
+            if target.get("device_id") == ["device-demo-1"]:
+                return ["light.turn_on"]
+
             return []
         raise AssertionError(command_type)
 
@@ -169,3 +181,25 @@ def test_plugin_exposes_introspection_as_read_only_core_tools() -> None:
     assert exists.ok and exists.value["exists"] is True
     assert describe.ok and describe.value["authorized"] is True
     assert validation.ok and validation.value["valid"] is True
+
+
+
+def test_device_target_action_validation_does_not_invent_read_state() -> None:
+    config, client, discovery = build()
+    introspector = HomeAssistantIntrospector(config, client, discovery)
+
+    read_validation = introspector.validate_mapping("desk_device")
+    action_validation = introspector.validate_mapping(
+        "desk_device",
+        "turn_on",
+    )
+
+    assert read_validation.mapped is True
+    assert read_validation.valid is False
+    assert read_validation.reason_code == "target_not_entity_backed"
+
+    assert action_validation.provider_exists is True
+    assert action_validation.provider_supports_action is True
+    assert action_validation.authorized is True
+    assert action_validation.valid is True
+    assert action_validation.reason_code == "mapping_valid"

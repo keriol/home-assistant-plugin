@@ -4,6 +4,7 @@ from wilfred_home_assistant import (
     HomeAssistantAction,
     HomeAssistantConfig,
     HomeAssistantConfigurationError,
+    HomeAssistantTarget,
 )
 
 
@@ -84,3 +85,32 @@ def test_action_defaults_cannot_override_target() -> None:
             service="turn_on",
             data={"entity_id": "light.forbidden"},
         )
+
+
+def test_typed_device_target_keeps_read_and_action_semantics_explicit() -> None:
+    resolved = HomeAssistantConfig(
+        base_url="http://ha.example:8123",
+        token="token",
+        targets={
+            "tv": HomeAssistantTarget(entity_id="remote.demo_tv", device_id="device-demo-tv"),
+            "action_only": HomeAssistantTarget(device_id="device-action-only"),
+        },
+        actions={
+            "turn_on": HomeAssistantAction(domain="remote", service="turn_on"),
+        },
+    )
+
+    assert resolved.resolve_target("tv") == "remote.demo_tv"
+    assert resolved.resolve_action_target("tv") == {"device_id": "device-demo-tv"}
+    assert resolved.resolve_action_target("action_only") == {"device_id": "device-action-only"}
+
+    with pytest.raises(HomeAssistantConfigurationError, match="ACTION-only"):
+        resolved.resolve_target("action_only")
+
+
+@pytest.mark.parametrize("field", ["entity_id", "device_id", "area_id", "target"])
+def test_all_target_override_fields_are_rejected(field: str) -> None:
+    from wilfred_home_assistant.config import reject_target_override
+
+    with pytest.raises(HomeAssistantConfigurationError, match="cannot override configured target fields"):
+        reject_target_override({field: "forbidden"})
