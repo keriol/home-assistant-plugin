@@ -101,6 +101,7 @@ class HomeAssistantAction:
     domain: str
     service: str
     data: Mapping[str, Any] = field(default_factory=dict)
+    target_required: bool = True
 
     def __post_init__(self) -> None:
         domain = self.domain.strip()
@@ -112,6 +113,10 @@ class HomeAssistantAction:
         if _SERVICE.fullmatch(service) is None:
             raise HomeAssistantConfigurationError(
                 f"Invalid Home Assistant service: {self.service!r}."
+            )
+        if not isinstance(self.target_required, bool):
+            raise HomeAssistantConfigurationError(
+                "Home Assistant action target_required must be a boolean."
             )
         forbidden = sorted(_RESERVED_TARGET_KEYS.intersection(self.data))
         if forbidden:
@@ -181,10 +186,6 @@ class HomeAssistantConfig(HomeAssistantConnectionConfig):
     def __post_init__(self) -> None:
         super().__post_init__()
 
-        if not self.targets:
-            raise HomeAssistantConfigurationError(
-                "At least one logical Home Assistant target is required."
-            )
         if not self.actions:
             raise HomeAssistantConfigurationError(
                 "At least one authorized Home Assistant action is required."
@@ -216,6 +217,15 @@ class HomeAssistantConfig(HomeAssistantConnectionConfig):
                     f"Action {logical!r} must be HomeAssistantAction."
                 )
             normalized_actions[logical] = action
+
+        if (
+            not normalized_targets
+            and any(action.target_required for action in normalized_actions.values())
+        ):
+            raise HomeAssistantConfigurationError(
+                "At least one logical Home Assistant target is required "
+                "for target-required actions."
+            )
 
         object.__setattr__(self, "targets", normalized_targets)
         object.__setattr__(self, "actions", normalized_actions)
