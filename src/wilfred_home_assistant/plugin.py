@@ -19,6 +19,7 @@ from wilfred_home_assistant.client import HomeAssistantClient
 from wilfred_home_assistant.config import HomeAssistantConfig, reject_target_override
 from wilfred_home_assistant.discovery import HomeAssistantDiscoveryClient
 from wilfred_home_assistant.errors import (
+    HomeAssistantConfigurationError,
     HomeAssistantConnectionError,
     HomeAssistantResponseError,
     HomeAssistantUnauthorizedError,
@@ -215,13 +216,26 @@ def create_plugin(
 
         def call_action(
             action: str,
-            target: str,
+            target: str | None = None,
             data: Mapping[str, Any] | None = None,
         ) -> dict[str, Any]:
             action_definition = config.resolve_action(action)
-            target_selector = config.resolve_action_target(target)
             overrides = dict(data or {})
             reject_target_override(overrides)
+
+            if action_definition.target_required:
+                if not target:
+                    raise HomeAssistantConfigurationError(
+                        f"Home Assistant action {action!r} requires an authorized target."
+                    )
+                target_selector = config.resolve_action_target(target)
+            else:
+                if target is not None:
+                    raise HomeAssistantConfigurationError(
+                        f"Home Assistant action {action!r} does not accept a target."
+                    )
+                target_selector = {}
+
             payload = dict(action_definition.data)
             payload.update(overrides)
             payload.update(target_selector)
@@ -235,9 +249,10 @@ def create_plugin(
             ToolDefinition(
                 name="home_assistant_call_action",
                 description=(
-                    "Dispatch a configured Home Assistant action to an authorized "
-                    "logical target. Successful dispatch does not prove physical "
-                    "state change."
+                    "Dispatch a configured Home Assistant action. Target-required "
+                    "actions use an authorized logical target; explicitly targetless "
+                    "actions omit provider target selectors. Successful dispatch does "
+                    "not prove physical state change."
                 ),
                 handler=call_action,
                 permission=ToolPermission.ACTION,
@@ -249,7 +264,7 @@ def create_plugin(
                         "target": {"type": "string", "enum": action_targets},
                         "data": {"type": "object"},
                     },
-                    "required": ["action", "target"],
+                    "required": ["action"],
                     "additionalProperties": False,
                 },
             )
