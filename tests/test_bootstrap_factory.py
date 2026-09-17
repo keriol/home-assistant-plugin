@@ -135,3 +135,39 @@ service = "turn_on"
     assert targets["demo_light"] == "light.demo"
     assert targets["tv_remote"] == HomeAssistantTarget(device_id="device-demo-tv")
     assert targets["tv_remote_verified"] == HomeAssistantTarget(entity_id="remote.demo_tv", device_id="device-demo-tv")
+
+
+def test_mapping_accepts_explicit_targetless_action(tmp_path: Path) -> None:
+    config = tmp_path / "home-assistant.toml"
+    config.write_text(
+        """
+[actions.run_scene_script]
+domain = "script"
+service = "run_scene_script"
+target_required = false
+""".strip() + "\n",
+        encoding="utf-8",
+    )
+
+    targets, actions = _load_mapping(config)
+    assert targets == {}
+    assert actions["run_scene_script"].target_required is False
+
+
+def test_mapping_rejects_non_boolean_target_required(tmp_path: Path) -> None:
+    config = tmp_path / "home-assistant.toml"
+    config.write_text(
+        """
+[actions.run_scene_script]
+domain = "script"
+service = "run_scene_script"
+target_required = "false"
+""".strip() + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        HomeAssistantConfigurationError,
+        match="target_required must be a boolean",
+    ):
+        _load_mapping(config)

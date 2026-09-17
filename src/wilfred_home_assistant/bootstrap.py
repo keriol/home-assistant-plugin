@@ -20,7 +20,12 @@ CONFIG_ENV = "HAP_HOME_ASSISTANT_CONFIG"
 LEGACY_CONFIG_ENV = "WILFRED_HOME_ASSISTANT_CONFIG"
 
 _ALLOWED_TOP_LEVEL = frozenset({"actions", "targets"})
-_ALLOWED_ACTION_KEYS = frozenset({"data", "domain", "service"})
+_ALLOWED_ACTION_KEYS = frozenset({
+    "data",
+    "domain",
+    "service",
+    "target_required",
+})
 _ALLOWED_TARGET_KEYS = frozenset({"device_id", "entity_id"})
 
 
@@ -107,6 +112,7 @@ def _load_mapping(
         domain = value.get("domain")
         service = value.get("service")
         data = value.get("data", {})
+        target_required = value.get("target_required", True)
         if not isinstance(domain, str):
             raise HomeAssistantConfigurationError(
                 f"Action {name!r}.domain must be a string."
@@ -119,10 +125,15 @@ def _load_mapping(
             raise HomeAssistantConfigurationError(
                 f"Action {name!r}.data must be a TOML table."
             )
+        if not isinstance(target_required, bool):
+            raise HomeAssistantConfigurationError(
+                f"Action {name!r}.target_required must be a boolean."
+            )
         actions[name] = HomeAssistantAction(
             domain=domain,
             service=service,
             data=data,
+            target_required=target_required,
         )
 
     return targets, actions

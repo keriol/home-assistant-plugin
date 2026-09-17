@@ -66,6 +66,36 @@ def build(*, api_status: int = 200):
     return registry, plugin
 
 
+def build_targetless():
+    observed: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/":
+            return httpx.Response(200, json={"message": "API running."})
+        observed["path"] = request.url.path
+        observed["payload"] = json.loads(request.content)
+        return httpx.Response(200, json=[])
+
+    config = HomeAssistantConfig(
+        base_url="http://ha.example:8123",
+        token="token",
+        targets={},
+        actions={
+            "run_scene_script": HomeAssistantAction(
+                domain="script",
+                service="run_scene_script",
+                data={"source": "butler"},
+                target_required=False,
+            )
+        },
+    )
+    client = HomeAssistantClient(config, transport=httpx.MockTransport(handler))
+    plugin = create_plugin(config, client=client)
+    registry = ToolRegistry()
+    plugin.register(registry)
+    return registry, observed
+
+
 def test_plugin_declares_home_capabilities_through_core() -> None:
     _registry, plugin = build()
 
@@ -86,6 +116,7 @@ def test_plugin_registers_read_and_action_tools() -> None:
     assert action is not None
     assert read.permission is ToolPermission.READ
     assert action.permission is ToolPermission.ACTION
+    assert action.parameters["required"] == ["action"]
 
 
 def test_read_executes_without_confirmation() -> None:
@@ -122,6 +153,89 @@ def test_confirmed_action_dispatches() -> None:
     )
     assert result.ok
     assert result.value["accepted"] is True
+
+
+def test_target_required_action_missing_target_fails_explicitly() -> None:
+    registry, _plugin = build()
+    result = ExecutionEngine(registry).execute(
+        ExecutionRequest(
+            tool_name="home_assistant_call_action",
+            arguments={"action": "turn_on"},
+            confirmed=True,
+        )
+    )
+
+    assert not result.ok
+    assert "requires an authorized target" in str(result.error_message)
+
+
+def test_targetless_action_still_requires_confirmation() -> None:
+    registry, _observed = build_targetless()
+    result = ExecutionEngine(registry).execute(
+        ExecutionRequest(
+            tool_name="home_assistant_call_action",
+            arguments={
+                "action": "run_scene_script",
+                "data": {"scene": "evening"},
+            },
+        )
+    )
+
+    assert result.status is ExecutionStatus.CONFIRMATION_REQUIRED
+
+
+def test_confirmed_targetless_action_dispatches_without_selector() -> None:
+    registry, observed = build_targetless()
+    result = ExecutionEngine(registry).execute(
+        ExecutionRequest(
+            tool_name="home_assistant_call_action",
+            arguments={
+                "action": "run_scene_script",
+                "data": {"scene": "evening"},
+            },
+            confirmed=True,
+        )
+    )
+
+    assert result.ok
+    assert result.value["accepted"] is True
+    assert observed["path"] == "/api/services/script/run_scene_script"
+    assert observed["payload"] == {
+        "source": "butler",
+        "scene": "evening",
+    }
+
+
+def test_targetless_action_rejects_supplied_target() -> None:
+    registry, _observed = build_targetless()
+    result = ExecutionEngine(registry).execute(
+        ExecutionRequest(
+            tool_name="home_assistant_call_action",
+            arguments={
+                "action": "run_scene_script",
+                "target": "unexpected",
+            },
+            confirmed=True,
+        )
+    )
+
+    assert not result.ok
+
+
+def test_targetless_action_rejects_target_override_data() -> None:
+    registry, _observed = build_targetless()
+    result = ExecutionEngine(registry).execute(
+        ExecutionRequest(
+            tool_name="home_assistant_call_action",
+            arguments={
+                "action": "run_scene_script",
+                "data": {"entity_id": "light.forbidden"},
+            },
+            confirmed=True,
+        )
+    )
+
+    assert not result.ok
 
 
 def test_plugin_and_capabilities_report_usable_readiness() -> None:

@@ -30,6 +30,7 @@ def test_configuration_normalizes_url() -> None:
     assert resolved.base_url == "http://ha.example:8123"
     assert resolved.resolve_target("desk_light") == "light.demo_desk"
     assert resolved.resolve_action("turn_on").service == "turn_on"
+    assert resolved.resolve_action("turn_on").target_required is True
     assert "secret-token" not in repr(resolved)
 
 
@@ -84,6 +85,54 @@ def test_action_defaults_cannot_override_target() -> None:
             domain="light",
             service="turn_on",
             data={"entity_id": "light.forbidden"},
+        )
+
+
+def test_targetless_action_allows_configuration_without_targets() -> None:
+    resolved = HomeAssistantConfig(
+        base_url="http://ha.example:8123",
+        token="token",
+        targets={},
+        actions={
+            "run_script": HomeAssistantAction(
+                domain="script",
+                service="run_script",
+                target_required=False,
+            ),
+        },
+    )
+
+    assert resolved.targets == {}
+    assert resolved.resolve_action("run_script").target_required is False
+
+
+def test_target_required_action_still_requires_configured_target() -> None:
+    with pytest.raises(
+        HomeAssistantConfigurationError,
+        match="target-required actions",
+    ):
+        HomeAssistantConfig(
+            base_url="http://ha.example:8123",
+            token="token",
+            targets={},
+            actions={
+                "turn_on": HomeAssistantAction(
+                    domain="light",
+                    service="turn_on",
+                ),
+            },
+        )
+
+
+def test_action_target_required_must_be_boolean() -> None:
+    with pytest.raises(
+        HomeAssistantConfigurationError,
+        match="target_required must be a boolean",
+    ):
+        HomeAssistantAction(
+            domain="script",
+            service="run_script",
+            target_required="false",  # type: ignore[arg-type]
         )
 
 
