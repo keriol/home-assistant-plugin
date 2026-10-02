@@ -45,7 +45,7 @@ def test_distribution_has_no_wilfred_runtime_dependency() -> None:
         project = tomllib.load(stream)["project"]
 
     assert project["name"] == "butler-home-assistant"
-    assert project["version"] == "0.2.0.dev0"
+    assert project["version"] == "0.3.0"
     assert any(str(dep).startswith("butler-core") for dep in project["dependencies"])
     assert all("wilfred-butler" not in str(dep) for dep in project["dependencies"])
 
