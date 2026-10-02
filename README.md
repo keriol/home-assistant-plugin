@@ -26,7 +26,7 @@ That forced the model to work against a real external platform rather than only
 a toy example.
 
 HAP has since moved beyond being a Wilfred-specific integration. The current
-`0.2.0.dev0` development line is a **consumer-neutral Butler plugin** built on
+`0.3.0` Ignition line is a **consumer-neutral Butler plugin** built on
 Butler Core contracts and usable independently by sibling Butler runtimes such
 as Wilfred and Alfred:
 
@@ -46,7 +46,7 @@ Python distribution is now `butler-home-assistant` and the runtime dependency is
 Butler Core rather than Wilfred. Historical `wilfred_home_assistant` naming is
 retained only where compatibility or history requires it.
 
-This is development state, not a claim that HAP `0.2.0` has been released.
+HAP 0.3.0 is the first release line declared network-capable in the Ignition Android-reaching compatibility baseline.
 
 ## Why the boundary matters
 
@@ -69,7 +69,7 @@ accumulating platform-specific device APIs in their runtime layers.
 
 ## Status
 
-`0.2.0.dev0` development line.
+`0.3.0` — Ignition Phase 1 Public Alpha.
 
 The repository currently provides:
 
