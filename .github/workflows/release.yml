@@ -1,4 +1,4 @@
-name: Wilfred Home Assistant Release
+name: Home Assistant Plugin Release
 
 on:
   push:
@@ -45,7 +45,7 @@ jobs:
 
           NOTES="docs/releases/${VERSION}.md"
           test -s "$NOTES"
-          grep -Fq "# Wilfred Home Assistant $VERSION" "$NOTES"
+          grep -Fq "# Home Assistant Plugin $VERSION" "$NOTES"
 
           if grep -Fq \
             'git+https://github.com/keriol/butler-wilfred.git@' \
@@ -79,8 +79,8 @@ jobs:
 
       - name: Clean-room
         run: |
-          python -m venv /tmp/wilfred-ha-release
-          source /tmp/wilfred-ha-release/bin/activate
+          python -m venv /tmp/home-assistant-plugin-release
+          source /tmp/home-assistant-plugin-release/bin/activate
           python -m pip install --upgrade pip
           python -m pip install dist/*.whl
           python -m pip check
@@ -90,7 +90,7 @@ jobs:
           import wilfred_home_assistant
 
           expected = os.environ["RELEASE_VERSION"]
-          assert version("wilfred-home-assistant") == expected
+          assert version("butler-home-assistant") == expected
           assert wilfred_home_assistant.__version__ == expected
           PY
 
@@ -102,5 +102,5 @@ jobs:
             dist/*.whl \
             dist/*.tar.gz \
             --verify-tag \
-            --title "Wilfred Home Assistant $GITHUB_REF_NAME" \
+            --title "Home Assistant Plugin $GITHUB_REF_NAME" \
             --notes-file "$RELEASE_NOTES"
