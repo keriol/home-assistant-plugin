@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "butler-home-assistant"
-version = "0.3.0"
+version = "0.3.1.dev0"
 description = "Reusable Home Assistant plugin for Butler runtimes"
 readme = "README.md"
 requires-python = ">=3.12"
